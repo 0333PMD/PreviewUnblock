@@ -22,7 +22,7 @@ Removing the `Zone.Identifier` stream means Windows will no longer warn you befo
 
 ## Building
 
-This project targets **.NET 6** and uses **Windows Forms**.  To build it yourself, install the .NET 6 SDK or later and run:
+This project targets **.NET 8** and uses **Windows Forms**.  To build it yourself, install the .NET 8 SDK and run:
 
 ```bash
 dotnet restore
