@@ -88,10 +88,11 @@ namespace PreviewUnblock
             this.labelWarning.Name = "labelWarning";
             this.labelWarning.Size = new Size(576, 40);
             this.labelWarning.TabIndex = 3;
-            this.labelWarning.Text = "Warning: Removing Windows' security flag can expose you to harmful files.\nOnly proceed if you trust the files in this folder.";
+            this.labelWarning.Text = "⚠️ WARNING: This removes Windows protection flags that warn about unsafe files.\nOnly use on folders where you personally downloaded and trust EVERY file.";
 
             // richTextBoxLog
             this.richTextBoxLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            this.richTextBoxLog.Font = new Font("Consolas", 9F, FontStyle.Regular, GraphicsUnit.Point);
             this.richTextBoxLog.Location = new Point(12, 121);
             this.richTextBoxLog.Name = "richTextBoxLog";
             this.richTextBoxLog.ReadOnly = true;
