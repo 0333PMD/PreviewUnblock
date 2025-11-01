@@ -34,7 +34,7 @@ dotnet build
 To create a single‑file, trimmed release suitable for distribution on 64‑bit Windows, use the following `dotnet publish` command:
 
 ```bash
-dotnet publish -r win-x64 -c Release /p:PublishSingleFile=true /p:PublishTrimmed=true
+dotnet publish -r win-x64 -c Release /p:PublishSingleFile=true /p:PublishTrimmed=false
 ```
 
 The output executable will be located in `bin/Release/net6.0-windows/win-x64/publish/PreviewUnblock.exe`.
