@@ -61,7 +61,7 @@ namespace PreviewUnblock
         /// Allow the user to choose a different folder to monitor. If monitoring
         /// is already running, restart with the new folder.
         /// </summary>
-        private void buttonChangeFolder_Click(object sender, EventArgs e)
+        private async void buttonChangeFolder_Click(object sender, EventArgs e)
         {
             using var dialog = new FolderBrowserDialog
             {
@@ -83,7 +83,7 @@ namespace PreviewUnblock
                 if (isMonitoring)
                 {
                     StopMonitoring();
-                    StartMonitoring();
+                    await StartMonitoringAsync();
                 }
             }
         }
@@ -108,11 +108,11 @@ namespace PreviewUnblock
         /// <summary>
         /// Toggle monitoring based on the current state.
         /// </summary>
-        private void buttonStartStop_Click(object sender, EventArgs e)
+        private async void buttonStartStop_Click(object sender, EventArgs e)
         {
             if (!isMonitoring)
             {
-                StartMonitoring();
+                await StartMonitoringAsync();
             }
             else
             {
@@ -124,7 +124,7 @@ namespace PreviewUnblock
         /// Start monitoring the selected folder: perform an initial scan and
         /// subscribe to file system events for future changes.
         /// </summary>
-        private void StartMonitoring()
+        private async Task StartMonitoringAsync()
         {
             string folderPath = textBoxFolder.Text;
             if (!Directory.Exists(folderPath))
@@ -138,13 +138,11 @@ namespace PreviewUnblock
             filesProcessed = 0;
             filesFailed = 0;
             buttonStartStop.Text = "Stop";
+            buttonStartStop.Enabled = false; // Disable during initial scan
             UpdateStatus();
             LogMessage("Started monitoring.");
 
-            // Perform an initial scan of existing PDF files.
-            ScanExistingPdfFiles(folderPath);
-
-            // Set up a FileSystemWatcher for *.pdf files in the selected directory.
+            // Set up FileSystemWatcher BEFORE initial scan so we don't miss any files
             watcher = new FileSystemWatcher(folderPath, "*.pdf")
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
@@ -157,6 +155,11 @@ namespace PreviewUnblock
             watcher.Renamed += OnFileRenamed;
             watcher.Error += OnWatcherError;
             watcher.EnableRaisingEvents = true;
+
+            // Perform an initial scan of existing PDF files asynchronously
+            await ScanExistingPdfFilesAsync(folderPath);
+
+            buttonStartStop.Enabled = true; // Re-enable after scan completes
         }
 
         /// <summary>
@@ -187,13 +190,27 @@ namespace PreviewUnblock
         }
 
         /// <summary>
-        /// Scan the current folder for existing PDF files and process each one in parallel.
+        /// Scan the current folder for existing PDF files and process each one asynchronously.
+        /// This runs on a background thread to keep the UI responsive.
         /// </summary>
-        private void ScanExistingPdfFiles(string folderPath)
+        private async Task ScanExistingPdfFilesAsync(string folderPath)
         {
             try
             {
-                var files = Directory.EnumerateFiles(folderPath, "*.pdf").ToList();
+                // Get file list on background thread to avoid blocking UI
+                var files = await Task.Run(() =>
+                {
+                    try
+                    {
+                        return Directory.EnumerateFiles(folderPath, "*.pdf").ToList();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Error enumerating files: {ex.Message}");
+                        return new List<string>();
+                    }
+                });
+
                 if (files.Count == 0)
                 {
                     LogMessage("No existing PDF files found.");
@@ -202,8 +219,12 @@ namespace PreviewUnblock
 
                 LogMessage($"Scanning {files.Count} existing PDF files...");
 
-                Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4 }, 
-                    file => ProcessFile(file));
+                // Process files on background thread with parallel processing
+                await Task.Run(() =>
+                {
+                    Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4 }, 
+                        file => ProcessFile(file));
+                });
 
                 LogMessage("Initial scan complete.");
             }
@@ -221,10 +242,10 @@ namespace PreviewUnblock
             if (!isMonitoring) return;
 
             // Process on a background task to avoid blocking the UI thread.
-            Task.Run(() =>
+            Task.Run(async () =>
             {
                 // Wait briefly to ensure the file is fully written to disk.
-                if (WaitForFileReady(e.FullPath))
+                if (await WaitForFileReadyAsync(e.FullPath))
                 {
                     ProcessFile(e.FullPath);
                 }
@@ -253,8 +274,9 @@ namespace PreviewUnblock
 
         /// <summary>
         /// Wait for a file to be ready for reading (not locked by another process).
+        /// Async version to avoid blocking threads.
         /// </summary>
-        private bool WaitForFileReady(string path, int maxAttempts = 3)
+        private async Task<bool> WaitForFileReadyAsync(string path, int maxAttempts = 3)
         {
             for (int i = 0; i < maxAttempts; i++)
             {
@@ -266,7 +288,7 @@ namespace PreviewUnblock
                 catch (IOException)
                 {
                     if (i < maxAttempts - 1) 
-                        Thread.Sleep(FILE_WRITE_DELAY_MS);
+                        await Task.Delay(FILE_WRITE_DELAY_MS);
                 }
                 catch
                 {
@@ -296,12 +318,12 @@ namespace PreviewUnblock
 
                     // Schedule removal from cache after 5 seconds
                     System.Threading.Timer cleanupTimer = new System.Threading.Timer(_ =>
-			{
-				lock (syncLock)
-    				{
-				        recentlyProcessed.Remove(filePath);
-				}
-			}, null, 5000, Timeout.Infinite);
+                    {
+                        lock (syncLock)
+                        {
+                            recentlyProcessed.Remove(filePath);
+                        }
+                    }, null, 5000, Timeout.Infinite);
                 }
 
                 if (!File.Exists(filePath))
